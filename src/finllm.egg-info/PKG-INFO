@@ -1,0 +1,299 @@
+Metadata-Version: 2.4
+Name: finllm
+Version: 0.1.0
+Summary: A from-scratch financial-domain decoder-only Transformer language model.
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.24
+Requires-Dist: sentencepiece>=0.1.99
+Requires-Dist: torch>=2.1
+Requires-Dist: tqdm>=4.66
+Provides-Extra: data
+Requires-Dist: datasets>=2.18; extra == "data"
+Requires-Dist: pandas>=2.0; extra == "data"
+Requires-Dist: requests>=2.31; extra == "data"
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+
+# FinLLM
+
+FinLLM is a from-scratch, finance-domain decoder-only Transformer language model.
+It is built around the local financial corpus and SentencePiece tokenizer already in
+this folder, with a production-style training pipeline: streaming tokenization,
+binary memory-mapped datasets, typed configs, checkpointing, evaluation, and
+sampling.
+
+This is intentionally honest engineering: it is not pretending to be GPT-4 scale.
+It is a serious miniature LLM system that shows the same core ideas used in larger
+systems: corpus construction, subword tokenization, causal attention, stable
+training loops, reproducible configs, validation loss, perplexity, and inference.
+
+## Why this is strong for a CV
+
+- Built a domain-specific language model from scratch in PyTorch.
+- Implemented both a legacy GPT-style stack and a more modern compact LLM stack
+  with RMSNorm, RoPE, grouped-query attention, SwiGLU, tied embeddings, top-k and
+  top-p sampling, repetition penalties, AdamW parameter grouping, cosine
+  learning-rate decay, gradient accumulation, gradient clipping, and checkpoint
+  resume.
+- Designed a scalable data pipeline that streams a large text corpus into compact
+  `train.bin` and `val.bin` memory maps instead of loading all text into RAM.
+- Trained with a custom 32k SentencePiece BPE tokenizer for financial filings and
+  news text.
+- Added model-card documentation, reproducible JSON configs, smoke tests, and CLI
+  entrypoints for preparation, training, evaluation, and generation.
+
+## Project layout
+
+```text
+.
+├── configs/
+│   ├── finance_small.json
+│   └── finance_tiny_cpu.json
+├── scripts/
+│   ├── prepare_dataset.py
+│   ├── quick_sample.py
+│   └── train_tokenizer.py
+├── src/finllm/
+│   ├── checkpoint.py
+│   ├── config.py
+│   ├── data.py
+│   ├── evaluate.py
+│   ├── generate.py
+│   ├── model.py
+│   ├── tokenizer.py
+│   ├── train.py
+│   └── utils.py
+├── tests/
+│   ├── test_data.py
+│   └── test_model.py
+├── finance_tokenizer.model
+├── financial_training_corpus_clean.txt
+└── MODEL_CARD.md
+```
+
+## Setup
+
+```powershell
+python -m pip install -e .
+```
+
+If editable install is not desired, run commands with:
+
+```powershell
+$env:PYTHONPATH = "src"
+```
+
+## Prepare the dataset
+
+The raw cleaned corpus in this folder is about 1.5 GB. Convert it once into binary
+token streams:
+
+```powershell
+python scripts/prepare_dataset.py `
+  --corpus financial_training_corpus_clean.txt `
+  --tokenizer finance_tokenizer.model `
+  --output-dir data/finance `
+  --val-fraction 0.005
+```
+
+This creates:
+
+- `data/finance/train.bin`
+- `data/finance/val.bin`
+- `data/finance/manifest.json`
+
+## Train
+
+For a quick CPU sanity run:
+
+```powershell
+python -m finllm.train --config configs/finance_tiny_cpu.json --max-iters 20
+```
+
+For the main small model:
+
+```powershell
+python -m finllm.train --config configs/finance_small.json
+```
+
+For the recommended modern CPU run:
+
+```powershell
+python -m finllm.train --config configs/finance_modern_cpu.json
+```
+
+On a CUDA GPU, you can add:
+
+```powershell
+python -m finllm.train --config configs/finance_small.json --device cuda --compile
+```
+
+Checkpoints are written to the configured `out_dir`:
+
+- `best.pt` for the best validation checkpoint
+- `last.pt` for the final checkpoint
+- `resolved_config.json` for the exact run settings
+
+## Evaluate
+
+```powershell
+python -m finllm.evaluate `
+  --checkpoint runs/finance-small/best.pt `
+  --data-dir data/finance
+```
+
+The evaluator prints train loss, validation loss, and validation perplexity.
+
+## Generate
+
+```powershell
+python -m finllm.generate `
+  --checkpoint runs/finance-small/best.pt `
+  --tokenizer finance_tokenizer.model `
+  --prompt "Apple reported stronger operating cash flow because" `
+  --max-new-tokens 120 `
+  --temperature 0.8 `
+  --top-k 50 `
+  --top-p 0.95 `
+  --repetition-penalty 1.05
+```
+
+## Why it is an LLM and not only a RAG chatbot
+
+The project has two layers:
+
+1. Base model:
+   a real decoder-only Transformer language model trained from scratch on the
+   finance corpus.
+2. Retrieval app:
+   a grounding layer that improves factuality and reduces hallucinations.
+
+The web app uses both. The base model is the LLM. Retrieval is the serving and
+reasoning support layer around it.
+
+## CPU-first training notes
+
+You are on CPU, so the most practical path is the modern compact config:
+
+```powershell
+python -m finllm.train --config configs/finance_modern_cpu.json
+```
+
+Why this config exists:
+
+- smaller hidden size than `finance_small`
+- grouped-query attention to reduce KV projection cost
+- RoPE instead of learned position embeddings
+- RMSNorm and SwiGLU for a more modern compact architecture
+- explicit `cpu_threads`
+- tuned batch size and gradient accumulation for CPU
+
+It is still a small model. It will not become a frontier reasoner, but it is a
+much better undergrad-scale LLM project than a simple API wrapper.
+
+## Full-stack demo app
+
+FinLLM Studio is a local full-stack app for demos and interviews. The backend is a
+Python API server; the frontend is a vanilla HTML/CSS/JavaScript workspace.
+
+The demo is designed to be free/local:
+
+- no OpenAI API
+- no Mistral API
+- no Ollama dependency
+- no Hugging Face hosted inference
+- no paid model service
+- no remote frontend image dependency
+
+Run it with:
+
+```powershell
+python scripts/run_webapp.py --host 127.0.0.1 --port 8000
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8000
+```
+
+The app can:
+
+- inspect corpus, tokenizer, model config, data preparation, and checkpoints
+- tokenize prompts through the real `finance_tokenizer.model`
+- retrieve cited evidence from a local SQLite full-text index
+- answer finance questions in an evidence-first chat UI
+- generate from `runs/finance-small/best.pt` or `runs/finance-small/last.pt` after training
+- show the exact commands needed to prepare data, train, and sample
+
+This gives the project a full-stack story: ML system backend, REST endpoints,
+interactive frontend, and model operations surfaced in a browser.
+
+## Build the retrieval index
+
+For lower hallucination and better Q&A demos, build the local retrieval index:
+
+```powershell
+python scripts/build_retrieval_index.py `
+  --corpus financial_training_corpus_clean.txt `
+  --index data/retrieval/finance_fts.sqlite
+```
+
+For a fast smoke build:
+
+```powershell
+python scripts/build_retrieval_index.py `
+  --corpus financial_training_corpus_clean.txt `
+  --index data/retrieval/finance_fts.sqlite `
+  --max-chunks 20000
+```
+
+The website uses this index for grounded chat answers with evidence snippets.
+
+## Build instruction data
+
+Raw next-token training teaches continuation. Instruction data teaches the model
+Q&A formatting and evidence-following behavior:
+
+```powershell
+python scripts/build_instruction_corpus.py `
+  --corpus financial_training_corpus_clean.txt `
+  --output-dir data/instruction `
+  --max-examples 50000
+```
+
+Then tokenize it:
+
+```powershell
+python scripts/prepare_dataset.py `
+  --corpus data/instruction/finance_sft.txt `
+  --tokenizer finance_tokenizer.model `
+  --output-dir data/finance_sft `
+  --val-fraction 0.02
+```
+
+And train a small instruction-style model:
+
+```powershell
+python -m finllm.train --config configs/finance_sft_tiny_cpu.json
+```
+
+## Suggested experiment log
+
+For a portfolio or CV, track at least:
+
+- corpus size and tokenizer vocabulary size
+- model parameter count
+- GPU/CPU used
+- max iterations and effective batch size
+- train loss, validation loss, and validation perplexity
+- qualitative samples before and after training
+- failure cases such as hallucinated numbers or weak long-context reasoning
+
+## Honest limitations
+
+This model is a compact domain LM, not a frontier assistant. It will generate
+financial-looking text, but it is not guaranteed to be factual and should not be
+used for investment decisions. The point of the project is systems depth: building
+and evaluating the LLM pipeline end to end from raw data to sampled text.

@@ -1,0 +1,42 @@
+{
+  "model": {
+    "architecture": "modern",
+    "block_size": 128,
+    "n_layer": 2,
+    "n_head": 2,
+    "n_embd": 128,
+    "dropout": 0.1,
+    "bias": false,
+    "norm_type": "rmsnorm",
+    "mlp_type": "swiglu",
+    "mlp_hidden_mult": 3.0,
+    "use_rope": true,
+    "num_kv_heads": 1
+  },
+  "train": {
+    "data_dir": "data/finance_sft",
+    "tokenizer_model": "finance_tokenizer.model",
+    "out_dir": "runs/finance-sft-tiny-cpu",
+    "batch_size": 8,
+    "gradient_accumulation_steps": 1,
+    "max_iters": 500,
+    "eval_interval": 50,
+    "eval_iters": 10,
+    "log_interval": 10,
+    "learning_rate": 0.0003,
+    "min_lr": 0.00003,
+    "warmup_iters": 20,
+    "lr_decay_iters": 500,
+    "weight_decay": 0.1,
+    "beta1": 0.9,
+    "beta2": 0.95,
+    "grad_clip": 1.0,
+    "seed": 1337,
+    "device": "cpu",
+    "dtype": "float32",
+    "compile": false,
+    "cpu_threads": 8,
+    "top_p": 0.95,
+    "repetition_penalty": 1.05
+  }
+}

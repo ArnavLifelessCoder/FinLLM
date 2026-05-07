@@ -1,0 +1,33 @@
+[project]
+name = "finllm"
+version = "0.1.0"
+description = "A from-scratch financial-domain decoder-only Transformer language model."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "sentencepiece>=0.1.99",
+  "torch>=2.1",
+  "tqdm>=4.66"
+]
+
+[project.optional-dependencies]
+data = [
+  "datasets>=2.18",
+  "pandas>=2.0",
+  "requests>=2.31"
+]
+dev = [
+  "pytest>=8.0"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
