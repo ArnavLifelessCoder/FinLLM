@@ -60,12 +60,7 @@ http://127.0.0.1:8000
 | Memory | 0 | 10 turns | NEW |
 | Evidence | 3 | 4 | +33% |
 
-## For Interviews
-
-**Prep Time**: 1 hour  
-**Read**: 1_INTERVIEW_GUIDE.md  
-**Skim**: 2_METHODOLOGY_AND_FLOW.md  
-**Review**: 3_ARCHITECTURE_AND_FLOW.md diagrams  
+ 
 
 ## Status
 
